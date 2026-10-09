@@ -1,0 +1,59 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.78'
+}
+
+version = property('mod_version')
+group = 'com.sereneworldgen'
+
+base {
+    archivesName = property('mod_id')
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = property('neo_version')
+
+    runs {
+        client {
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', property('mod_id')
+        }
+        server {
+            server()
+            systemProperty 'neoforge.enabledGameTestNamespaces', property('mod_id')
+            programArgument '--nogui'
+        }
+        data {
+            data()
+            programArguments.addAll '--mod', property('mod_id'), '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
+    }
+
+    mods {
+        "${property('mod_id')}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+        minecraft_version   : minecraft_version,
+        neo_version         : neo_version,
+        mod_id              : mod_id,
+        mod_name            : mod_name,
+        mod_license         : mod_license,
+        mod_version         : mod_version,
+        mod_authors         : mod_authors,
+        mod_description     : mod_description
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/neoforge.mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties
+    }
+}

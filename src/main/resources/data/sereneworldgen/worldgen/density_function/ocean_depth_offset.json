@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:spline",
+  "spline": {
+    "coordinate": "sereneworldgen:continents",
+    "points": [
+      { "location": -1.10, "value": -0.44, "derivative": 0.00 },
+      { "location": -0.65, "value": -0.42, "derivative": 0.22 },
+      { "location": -0.25, "value": -0.25, "derivative": 0.52 },
+      { "location":  0.00, "value": -0.08, "derivative": 0.63 },
+      { "location":  0.15, "value":  0.00, "derivative": 0.00 },
+      { "location":  0.60, "value":  0.00, "derivative": 0.00 }
+    ]
+  }
+}

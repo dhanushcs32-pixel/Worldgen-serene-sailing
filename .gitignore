@@ -1,0 +1,39 @@
+# Gradle build outputs and internal caches
+.gradle/
+build/
+bin/
+out/
+
+# Minecraft / NeoForge runtime testing directories
+run/
+runs/
+*.log
+crash-reports/
+
+# IDE configurations and project files
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio Code
+.vscode/
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# Local build environment overrides
+local.properties
+
+# Operating System specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Profiler & JVM crash dumps
+*.hprof
+hs_err_pid*
+replay_pid*
