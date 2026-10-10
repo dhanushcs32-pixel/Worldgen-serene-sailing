@@ -1,6 +1,7 @@
 package com.sereneworldgen.datagen;
 
 import com.sereneworldgen.SereneOceanWorldgen;
+import com.sereneworldgen.worldgen.SpawnIslandBias;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.RegistrySetBuilder;
@@ -31,6 +32,7 @@ public class DataGenerators {
     /** Custom continents remap spline that deepens the vanilla ocean gradient. */
     public static final ResourceKey<DensityFunction> CONTINENTS_OVERWRITE =
             ResourceKey.create(Registries.DENSITY_FUNCTION, ResourceLocation.fromNamespaceAndPath(SereneOceanWorldgen.MOD_ID, "continents"));
+    public static final ResourceKey<DensityFunction> CUSTOM_CONTINENTS = CONTINENTS_OVERWRITE;
 
     /** The Serene Sailing noise router preset. */
     public static final ResourceKey<NoiseGeneratorSettings> ENDLESS_OCEAN_KEY =
@@ -51,8 +53,14 @@ public class DataGenerators {
                     NoiseRouter baseRouter = vanilla.noiseRouter();
 
                     // 2. Clean routing: continentalness remapped to oceanic spline,
-                    // depth and densities wired cleanly to vanilla definitions without manual DensityFunctions.add hacks.
-                    DensityFunction continentsOverwrite = new DensityFunctions.HolderHolder(densityLookup.getOrThrow(CONTINENTS_OVERWRITE));
+                    // with radial spawn bias boosting continents within 1400 blocks of (0,0)
+                    DensityFunction rawContinents = new DensityFunctions.HolderHolder(densityLookup.getOrThrow(CONTINENTS_OVERWRITE));
+
+                    // Bias continents upward within 1400 blocks of (0,0) to create a tight starter archipelago
+                    DensityFunction moddedContinents = DensityFunctions.add(
+                            rawContinents,
+                            new SpawnIslandBias(1400.0, 0.50)
+                    );
 
                     NoiseRouter customRouter = new NoiseRouter(
                             baseRouter.barrierNoise(),
@@ -61,7 +69,7 @@ public class DataGenerators {
                             baseRouter.lavaNoise(),
                             baseRouter.temperature(),
                             baseRouter.vegetation(),
-                            continentsOverwrite, // custom ocean remap spline
+                            moddedContinents, // custom ocean remap spline with spawn island bias
                             baseRouter.erosion(),
                             baseRouter.depth(),
                             baseRouter.ridges(),
