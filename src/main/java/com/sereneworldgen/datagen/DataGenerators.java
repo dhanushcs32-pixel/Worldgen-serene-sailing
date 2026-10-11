@@ -59,7 +59,7 @@ public class DataGenerators {
                     // Bias continents upward within 1400 blocks of (0,0) to create a tight starter archipelago
                     DensityFunction moddedContinents = DensityFunctions.add(
                             rawContinents,
-                            new SpawnIslandBias(1400.0, 0.50)
+                            new SpawnIslandBias(1400.0, 0.90)
                     );
 
                     NoiseRouter customRouter = new NoiseRouter(
