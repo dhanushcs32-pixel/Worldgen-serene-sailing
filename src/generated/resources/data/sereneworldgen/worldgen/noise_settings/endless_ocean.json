@@ -24,7 +24,13 @@
       "xz_scale": 1.0,
       "y_scale": 0.5
     },
-    "continents": "sereneworldgen:continents",
+    "continents": {
+      "type": "minecraft:add",
+      "argument1": "sereneworldgen:continents",
+      "argument2": {
+        "type": "sereneworldgen:spawn_island_bias"
+      }
+    },
     "depth": "minecraft:overworld/depth",
     "erosion": "minecraft:overworld/erosion",
     "final_density": {
