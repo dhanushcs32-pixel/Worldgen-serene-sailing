@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "sereneworldgen:endless_ocean",
+      "required": false
+    }
+  ]
+}
