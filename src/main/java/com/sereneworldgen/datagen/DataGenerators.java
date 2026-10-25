@@ -14,15 +14,12 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseRouter;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.data.DatapackBuiltinEntriesProvider;
 import net.neoforged.neoforge.data.event.GatherDataEvent;
 
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
-@EventBusSubscriber(modid = SereneOceanWorldgen.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public class DataGenerators {
 
     /** Ocean depth offset spline reference. */
@@ -38,7 +35,6 @@ public class DataGenerators {
     public static final ResourceKey<NoiseGeneratorSettings> ENDLESS_OCEAN_KEY =
             ResourceKey.create(Registries.NOISE_SETTINGS, ResourceLocation.fromNamespaceAndPath(SereneOceanWorldgen.MOD_ID, "endless_ocean"));
 
-    @SubscribeEvent
     public static void gatherData(GatherDataEvent event) {
         DataGenerator generator = event.getGenerator();
         PackOutput packOutput = generator.getPackOutput();
