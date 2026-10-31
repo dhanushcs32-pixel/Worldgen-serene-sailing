@@ -40,6 +40,27 @@ neoForge {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation sourceSets.main.output
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+}
+
+sourceSets {
+    test {
+        compileClasspath += sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
 
 tasks.withType(ProcessResources).configureEach {
     var replaceProperties = [

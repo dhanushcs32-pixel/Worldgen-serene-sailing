@@ -8,10 +8,15 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 
 public record SpawnIslandBias(double radius, double boost) implements DensityFunction.SimpleFunction {
 
+    public static final double DEFAULT_RADIUS = 1400.0;
+    public static final double DEFAULT_BOOST = 0.90;
+    public static final double CORE_RADIUS = 70.0;
+    public static final double COAST_RADIUS = 120.0;
+
     public static final MapCodec<SpawnIslandBias> CODEC = RecordCodecBuilder.mapCodec(instance ->
             instance.group(
-                    Codec.DOUBLE.optionalFieldOf("radius", 1400.0).forGetter(SpawnIslandBias::radius),
-                    Codec.DOUBLE.optionalFieldOf("boost", 0.90).forGetter(SpawnIslandBias::boost)
+                    Codec.DOUBLE.optionalFieldOf("radius", DEFAULT_RADIUS).forGetter(SpawnIslandBias::radius),
+                    Codec.DOUBLE.optionalFieldOf("boost", DEFAULT_BOOST).forGetter(SpawnIslandBias::boost)
             ).apply(instance, SpawnIslandBias::new)
     );
 
@@ -19,45 +24,66 @@ public record SpawnIslandBias(double radius, double boost) implements DensityFun
 
     @Override
     public double compute(FunctionContext ctx) {
+        if (ctx == null) {
+            return 0.0;
+        }
+
+        double safeRadius = (Double.isFinite(radius) && radius > 0.0) ? radius : DEFAULT_RADIUS;
+        double safeBoost = Double.isFinite(boost) ? boost : DEFAULT_BOOST;
+
         double x = ctx.blockX();
         double z = ctx.blockZ();
         double distSq = x * x + z * z;
-        double rSq = radius * radius;
+        double rSq = safeRadius * safeRadius;
 
-        if (distSq >= rSq) {
+        if (distSq >= rSq || distSq < 0.0 || Double.isNaN(distSq)) {
             return 0.0;
         }
 
         double dist = Math.sqrt(distSq);
-        double coreRadius = 70.0;
-        double coastRadius = 120.0;
-        double coreBoost = Math.max(boost + 0.45, 1.35);
+        if (!Double.isFinite(dist)) {
+            return 0.0;
+        }
 
+        double coreBoost = Math.max(safeBoost + 0.45, 1.35);
+
+        double result;
         // 1. Guaranteed elevated starter island core near (0, 0)
-        if (dist <= coreRadius) {
-            return coreBoost;
-        }
-
-        // 2. Smooth coastal transition to beach and shoreline
-        if (dist <= coastRadius) {
-            double t = (dist - coreRadius) / (coastRadius - coreRadius);
+        if (dist <= CORE_RADIUS) {
+            result = coreBoost;
+        } else if (dist <= COAST_RADIUS) {
+            // 2. Smooth coastal transition to beach and shoreline
+            double t = (dist - CORE_RADIUS) / (COAST_RADIUS - CORE_RADIUS);
             double smoothT = 0.5 * (1.0 + Math.cos(t * Math.PI));
-            return boost + (coreBoost - boost) * smoothT;
+            result = safeBoost + (coreBoost - safeBoost) * smoothT;
+        } else {
+            // 3. Archipelago spread outward to radius
+            if (safeRadius <= COAST_RADIUS) {
+                result = 0.0;
+            } else {
+                double tArch = (dist - COAST_RADIUS) / (safeRadius - COAST_RADIUS);
+                tArch = Math.clamp(tArch, 0.0, 1.0);
+                result = safeBoost * (1.0 - tArch);
+            }
         }
 
-        // 3. Archipelago spread outward to radius
-        double tArch = (dist - coastRadius) / (radius - coastRadius);
-        return boost * (1.0 - tArch);
+        if (!Double.isFinite(result)) {
+            return 0.0;
+        }
+
+        return Math.clamp(result, minValue(), maxValue());
     }
 
     @Override
     public double minValue() {
-        return 0.0;
+        double safeBoost = Double.isFinite(boost) ? boost : DEFAULT_BOOST;
+        return Math.min(0.0, safeBoost);
     }
 
     @Override
     public double maxValue() {
-        return Math.max(boost + 0.45, 1.35);
+        double safeBoost = Double.isFinite(boost) ? boost : DEFAULT_BOOST;
+        return Math.max(0.0, Math.max(safeBoost, Math.max(safeBoost + 0.45, 1.35)));
     }
 
     @Override
