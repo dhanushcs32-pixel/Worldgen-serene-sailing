@@ -61,6 +61,10 @@ test {
     useJUnitPlatform()
 }
 
+tasks.named('jar', Jar).configure {
+    exclude '.cache/**'
+}
+
 
 tasks.withType(ProcessResources).configureEach {
     var replaceProperties = [

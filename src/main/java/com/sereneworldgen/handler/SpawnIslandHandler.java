@@ -215,7 +215,7 @@ public class SpawnIslandHandler {
                 serverLevel.getServer().execute(() -> {
                     try {
                         if (serverLevel.hasChunk(spawnPos.getX() >> 4, spawnPos.getZ() >> 4)) {
-                            spawnSheepFlock(serverLevel, spawnPos, 3, 4);
+                            spawnSheepFlock(serverLevel, spawnPos, 2, 3);
                         }
                     } catch (Exception e) {
                         LOGGER.warn("[SereneOceanWorldgen] Deferred starter sheep spawn skipped: {}", e.getMessage());
@@ -264,10 +264,10 @@ public class SpawnIslandHandler {
                     serverLevel.getServer().execute(() -> {
                         try {
                             if (serverLevel.hasChunk(chunkPos.x, chunkPos.z)) {
-                                AABB checkArea = new AABB(surfacePos).inflate(48.0);
+                                AABB checkArea = new AABB(surfacePos).inflate(80.0);
                                 List<Sheep> existing = serverLevel.getEntitiesOfClass(Sheep.class, checkArea);
-                                if (existing.isEmpty()) {
-                                    spawnSheepFlock(serverLevel, surfacePos, 2, 4);
+                                if (existing.size() < 4) {
+                                    spawnSheepFlock(serverLevel, surfacePos, 2, 3);
                                 }
                             }
                         } catch (Exception e) {

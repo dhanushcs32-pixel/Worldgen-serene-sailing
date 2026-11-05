@@ -4,9 +4,9 @@
   "spawners": [
     {
       "type": "minecraft:sheep",
-      "weight": 28,
-      "minCount": 3,
-      "maxCount": 6
+      "weight": 14,
+      "minCount": 2,
+      "maxCount": 3
     }
   ]
 }
