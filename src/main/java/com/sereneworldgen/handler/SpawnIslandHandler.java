@@ -47,7 +47,7 @@ public class SpawnIslandHandler {
             LOGGER.info("[SereneOceanWorldgen] Evaluating world spawn for large island near (0, 0)...");
 
             BlockPos bestCandidate = null;
-            double bestLandRatio = -1.0;
+            double bestLandRatio = 0.0;
 
             int maxLayers = Math.min(MAX_SEARCH_RADIUS / SEARCH_STEP, 32);
             int iterations = 0;
@@ -65,7 +65,7 @@ public class SpawnIslandHandler {
                     if (result.isValidIsland()) {
                         setWorldSpawn(serverLevel, event, result.spawnPos(), result.landRatio());
                         return;
-                    } else if (result.landRatio() > bestLandRatio) {
+                    } else if (result.landRatio() > bestLandRatio && result.landRatio() > 0.0) {
                         bestLandRatio = result.landRatio();
                         bestCandidate = result.spawnPos();
                     }
@@ -83,7 +83,7 @@ public class SpawnIslandHandler {
                         if (result.isValidIsland()) {
                             setWorldSpawn(serverLevel, event, result.spawnPos(), result.landRatio());
                             return;
-                        } else if (result.landRatio() > bestLandRatio) {
+                        } else if (result.landRatio() > bestLandRatio && result.landRatio() > 0.0) {
                             bestLandRatio = result.landRatio();
                             bestCandidate = result.spawnPos();
                         }
@@ -101,7 +101,7 @@ public class SpawnIslandHandler {
                         if (result.isValidIsland()) {
                             setWorldSpawn(serverLevel, event, result.spawnPos(), result.landRatio());
                             return;
-                        } else if (result.landRatio() > bestLandRatio) {
+                        } else if (result.landRatio() > bestLandRatio && result.landRatio() > 0.0) {
                             bestLandRatio = result.landRatio();
                             bestCandidate = result.spawnPos();
                         }
@@ -110,9 +110,9 @@ public class SpawnIslandHandler {
             }
 
             // Fallback if no candidate strictly reached 65% land ratio
-            if (bestCandidate != null) {
-                LOGGER.warn("[SereneOceanWorldgen] No candidate reached {:.0f}% land ratio; using best island candidate at {} ({:.1f}%)",
-                        REQUIRED_LAND_RATIO * 100, bestCandidate, bestLandRatio * 100);
+            if (bestCandidate != null && bestLandRatio > 0.0) {
+                LOGGER.warn("[SereneOceanWorldgen] No candidate reached {}% land ratio; using best island candidate at {} ({}%)",
+                        Math.round(REQUIRED_LAND_RATIO * 100), bestCandidate, Math.round(bestLandRatio * 100));
                 setWorldSpawn(serverLevel, event, bestCandidate, bestLandRatio);
             } else {
                 LOGGER.warn("[SereneOceanWorldgen] Unable to find suitable island; allowing default spawn.");
@@ -133,7 +133,7 @@ public class SpawnIslandHandler {
             if (centerChunk != null) {
                 surfaceY = centerChunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, candX & 15, candZ & 15) - 1;
             } else {
-                surfaceY = generator.getBaseHeight(candX, candZ, Heightmap.Types.WORLD_SURFACE_WG, level, randomState) - 1;
+                surfaceY = generator.getBaseHeight(candX, candZ, Heightmap.Types.OCEAN_FLOOR_WG, level, randomState) - 1;
             }
 
             // Candidate center must be at or above sea level (Y >= 63)
@@ -142,11 +142,15 @@ public class SpawnIslandHandler {
             }
 
             BlockPos centerSurfacePos = new BlockPos(candX, surfaceY, candZ);
+            BlockState centerState;
             if (centerChunk != null) {
-                BlockState centerState = centerChunk.getBlockState(new BlockPos(candX & 15, surfaceY, candZ & 15));
-                if (!centerState.getFluidState().isEmpty() || centerState.isAir()) {
-                    return new EvaluationResult(centerSurfacePos.above(), 0.0, false);
-                }
+                centerState = centerChunk.getBlockState(new BlockPos(candX & 15, surfaceY, candZ & 15));
+            } else {
+                centerState = generator.getBaseColumn(candX, candZ, level, randomState).getBlock(surfaceY);
+            }
+
+            if (!centerState.getFluidState().isEmpty() || centerState.isAir()) {
+                return new EvaluationResult(centerSurfacePos.above(), 0.0, false);
             }
 
             int totalColumns = 0;
@@ -179,10 +183,17 @@ public class SpawnIslandHandler {
                             }
                         }
                     } else {
-                        colY = generator.getBaseHeight(sampleX, sampleZ, Heightmap.Types.WORLD_SURFACE_WG, level, randomState) - 1;
+                        colY = generator.getBaseHeight(sampleX, sampleZ, Heightmap.Types.OCEAN_FLOOR_WG, level, randomState) - 1;
                         if (colY >= 63) {
-                            solidDryColumns++;
-                            hasVegetation = true;
+                            BlockState state = generator.getBaseColumn(sampleX, sampleZ, level, randomState).getBlock(colY);
+                            if (state.getFluidState().isEmpty() && !state.isAir()) {
+                                solidDryColumns++;
+                                if (state.is(Blocks.GRASS_BLOCK) || state.is(BlockTags.LEAVES) || state.is(BlockTags.LOGS) || state.is(Blocks.SHORT_GRASS)) {
+                                    hasVegetation = true;
+                                } else {
+                                    hasVegetation = true;
+                                }
+                            }
                         }
                     }
                 }
@@ -205,10 +216,13 @@ public class SpawnIslandHandler {
             if (serverLevel.getLevelData() instanceof ServerLevelData serverLevelData) {
                 serverLevelData.setSpawn(spawnPos, 0.0f);
             }
+            if (event.getSettings() != null) {
+                event.getSettings().setSpawn(spawnPos, 0.0f);
+            }
             event.setCanceled(true);
 
-            LOGGER.info("[SereneOceanWorldgen] Successfully established safe World Spawn at {} on island (dry land: {:.1f}%)",
-                    spawnPos, landRatio * 100);
+            LOGGER.info("[SereneOceanWorldgen] Successfully established safe World Spawn at {} on island (dry land: {}%)",
+                    spawnPos, Math.round(landRatio * 100));
 
             // Defer starter sheep flock spawning until world and spawn chunks are loaded
             if (serverLevel.getServer() != null) {

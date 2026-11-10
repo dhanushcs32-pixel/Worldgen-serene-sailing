@@ -59,6 +59,30 @@ public class WorldgenLoadTest {
     }
 
     @Test
+    @DisplayName("Verify SpawnIslandBias elevates depth density at spawn (0, 0) and decays to 0 outside radius")
+    void testSpawnIslandBiasElevatesDepth() {
+        SpawnIslandBias bias = new SpawnIslandBias(1400.0, 0.90);
+
+        // Simulated depth calculation at Y=64
+        // gradient at Y=64: 0.5
+        // ocean offset: -0.44 (deep ocean depression)
+        // baseline ocean depth without bias: 0.5 - 0.44 = 0.06
+        double oceanOffset = -0.44;
+        double baseGradientAtSeaLevel = 0.5;
+
+        double spawnBiasVal = bias.compute(new DummyContext(0, 64, 0));
+        double spawnDepth = baseGradientAtSeaLevel + oceanOffset + spawnBiasVal;
+
+        double outsideBiasVal = bias.compute(new DummyContext(1500, 64, 1500));
+        double outsideDepth = baseGradientAtSeaLevel + oceanOffset + outsideBiasVal;
+
+        assertTrue(spawnBiasVal >= 1.35, "Spawn island bias at center should provide strong positive boost");
+        assertTrue(spawnDepth > 1.0, "Spawn depth at (0, 0) should be strongly positive to form high dry land");
+        assertEquals(0.0, outsideBiasVal, 1e-6, "Outside radius bias should be 0");
+        assertTrue(outsideDepth < spawnDepth, "Ocean outside spawn radius should have significantly lower depth density");
+    }
+
+    @Test
     @DisplayName("Verify SpawnIslandBias robustness against extreme / NaN / infinite parameters")
     void testSpawnIslandBiasEdgeCases() {
         // Degenerate radius and boosts

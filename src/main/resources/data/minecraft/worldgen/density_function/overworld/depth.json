@@ -11,5 +11,9 @@
     },
     "argument2": "minecraft:overworld/offset"
   },
-  "argument2": "sereneworldgen:ocean_depth_offset"
+  "argument2": {
+    "type": "minecraft:add",
+    "argument1": "sereneworldgen:ocean_depth_offset",
+    "argument2": "sereneworldgen:spawn_island_bias"
+  }
 }
