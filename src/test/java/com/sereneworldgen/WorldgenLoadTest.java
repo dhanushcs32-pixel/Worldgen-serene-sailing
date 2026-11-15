@@ -1,9 +1,9 @@
 package com.sereneworldgen;
 
 import com.sereneworldgen.handler.SpawnIslandHandler;
+import com.sereneworldgen.handler.SpawnSearchPattern;
 import com.sereneworldgen.worldgen.SpawnIslandBias;
 import net.minecraft.SharedConstants;
-import net.minecraft.core.BlockPos;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.blending.Blender;
@@ -32,110 +32,70 @@ public class WorldgenLoadTest {
             return Blender.empty();
         }
     }
+
     @Test
-    @DisplayName("Assert continentalness noise sampling returns valid finite numbers across (0,0) to (1500,1500)")
-    void testContinentalnessSamplingAcrossCoordinates() {
-        SpawnIslandBias bias = new SpawnIslandBias(1400.0, 0.90);
+    @DisplayName("Island weight: 1 in the core, smooth fade, 0 at and beyond the radius; always within [min, max]")
+    void testIslandWeightProfile() {
+        SpawnIslandBias weight = new SpawnIslandBias(130.0, 40.0);
 
-        // Core value at (0, 0)
-        double centerVal = bias.compute(new DummyContext(0, 64, 0));
-        assertTrue(Double.isFinite(centerVal), "Center value must be finite");
-        assertEquals(1.35, centerVal, 1e-6, "Center value must match elevated starter core boost");
+        assertEquals(1.0, weight.compute(new DummyContext(0, 64, 0)), 1e-9, "spawn is fully inside the island");
+        assertEquals(1.0, weight.compute(new DummyContext(40, 64, 0)), 1e-9, "core edge");
+        assertEquals(0.5, weight.compute(new DummyContext(85, 64, 0)), 1e-9, "midpoint of the fade (40..130)");
+        assertEquals(0.0, weight.compute(new DummyContext(130, 64, 0)), 1e-9, "outer edge");
+        assertEquals(0.0, weight.compute(new DummyContext(1500, 64, 1500)), 1e-9, "far away: untouched natural world");
 
-        // Verify across (0,0) to (1500,1500)
-        for (int x = 0; x <= 1500; x += 16) {
-            for (int z = 0; z <= 1500; z += 16) {
-                double val = bias.compute(new DummyContext(x, 64, z));
-                assertTrue(Double.isFinite(val), "Sampled value at (" + x + ", " + z + ") must be finite");
-                assertFalse(Double.isNaN(val), "Sampled value at (" + x + ", " + z + ") must not be NaN");
-                assertTrue(val >= bias.minValue(), "Value at (" + x + ", " + z + ") must be >= minValue");
-                assertTrue(val <= bias.maxValue(), "Value at (" + x + ", " + z + ") must be <= maxValue");
+        for (int x = -300; x <= 300; x += 7) {
+            for (int z = -300; z <= 300; z += 7) {
+                double v = weight.compute(new DummyContext(x, 64, z));
+                assertTrue(Double.isFinite(v), "finite at " + x + "," + z);
+                assertTrue(v >= weight.minValue() && v <= weight.maxValue(), "within [min,max] at " + x + "," + z);
             }
         }
-
-        // Test outside radius boundary
-        double outsideVal = bias.compute(new DummyContext(1500, 64, 1500));
-        assertEquals(0.0, outsideVal, 1e-6, "Points outside 1400 radius must return 0.0 bias");
     }
 
     @Test
-    @DisplayName("Verify SpawnIslandBias elevates depth density at spawn (0, 0) and decays to 0 outside radius")
-    void testSpawnIslandBiasElevatesDepth() {
-        SpawnIslandBias bias = new SpawnIslandBias(1400.0, 0.90);
+    @DisplayName("Island weight never increases with distance and has no cliff at the edge, for any radius")
+    void testWeightIsMonotonicAndContinuous() {
+        for (double radius : new double[]{20.0, 50.0, 130.0, 400.0}) {
+            SpawnIslandBias weight = new SpawnIslandBias(radius, radius * 0.3);
 
-        // Simulated depth calculation at Y=64
-        // gradient at Y=64: 0.5
-        // ocean offset: -0.44 (deep ocean depression)
-        // baseline ocean depth without bias: 0.5 - 0.44 = 0.06
-        double oceanOffset = -0.44;
-        double baseGradientAtSeaLevel = 0.5;
-
-        double spawnBiasVal = bias.compute(new DummyContext(0, 64, 0));
-        double spawnDepth = baseGradientAtSeaLevel + oceanOffset + spawnBiasVal;
-
-        double outsideBiasVal = bias.compute(new DummyContext(1500, 64, 1500));
-        double outsideDepth = baseGradientAtSeaLevel + oceanOffset + outsideBiasVal;
-
-        assertTrue(spawnBiasVal >= 1.35, "Spawn island bias at center should provide strong positive boost");
-        assertTrue(spawnDepth > 1.0, "Spawn depth at (0, 0) should be strongly positive to form high dry land");
-        assertEquals(0.0, outsideBiasVal, 1e-6, "Outside radius bias should be 0");
-        assertTrue(outsideDepth < spawnDepth, "Ocean outside spawn radius should have significantly lower depth density");
-    }
-
-    @Test
-    @DisplayName("Verify SpawnIslandBias robustness against extreme / NaN / infinite parameters")
-    void testSpawnIslandBiasEdgeCases() {
-        // Degenerate radius and boosts
-        SpawnIslandBias nanBias = new SpawnIslandBias(Double.NaN, Double.NaN);
-        double valNan = nanBias.compute(new DummyContext(0, 64, 0));
-        assertTrue(Double.isFinite(valNan), "NaN parameters must fall back safely to finite numbers");
-        assertTrue(valNan >= nanBias.minValue() && valNan <= nanBias.maxValue());
-
-        SpawnIslandBias negBias = new SpawnIslandBias(-500.0, -1.0);
-        double valNeg = negBias.compute(new DummyContext(0, 64, 0));
-        assertTrue(Double.isFinite(valNeg), "Negative radius must be handled safely");
-
-        SpawnIslandBias zeroRadius = new SpawnIslandBias(50.0, 0.90); // radius < coastRadius
-        double valSmallRadius = zeroRadius.compute(new DummyContext(100, 64, 100));
-        assertTrue(Double.isFinite(valSmallRadius), "Radius smaller than coastRadius must not divide by zero");
-
-        // Null context guard
-        assertEquals(0.0, nanBias.compute(null), "Null context must return 0.0 safely");
-    }
-
-    @Test
-    @DisplayName("Verify spawn position selection simulation completes within 500ms and respects 64-iteration limit")
-    void testSpawnPositionSelectionPerformance() {
-        assertEquals(64, SpawnIslandHandler.MAX_SEARCH_ITERATIONS, "Safety iteration cap must be 64");
-
-        long startNanos = System.nanoTime();
-
-        // Simulate radial spiral search evaluation matching SpawnIslandHandler
-        int step = SpawnIslandHandler.SEARCH_STEP;
-        int maxLayers = Math.min(SpawnIslandHandler.MAX_SEARCH_RADIUS / step, 32);
-        int iterations = 0;
-        BlockPos bestCandidate = null;
-
-        outer:
-        for (int layer = 0; layer <= maxLayers; layer++) {
-            int radius = layer * step;
-            if (layer == 0) {
-                if (++iterations > SpawnIslandHandler.MAX_SEARCH_ITERATIONS) break;
-                // Fast simulation of candidate evaluation
-                bestCandidate = new BlockPos(0, 64, 0);
-                break;
+            double previous = weight.compute(new DummyContext(0, 64, 0));
+            for (int x = 1; x <= (int) radius + 5; x++) {
+                double value = weight.compute(new DummyContext(x, 64, 0));
+                assertTrue(value <= previous + 1e-9, "radius " + radius + ": weight increased at x=" + x);
+                assertTrue(previous - value < 0.25, "radius " + radius + ": jump of " + (previous - value) + " at x=" + x);
+                previous = value;
             }
-            for (int x = -radius; x <= radius; x += step) {
-                for (int z : new int[]{-radius, radius}) {
-                    if (++iterations > SpawnIslandHandler.MAX_SEARCH_ITERATIONS) break outer;
-                }
+            assertEquals(0.0, previous, 1e-9, "radius " + radius + ": zero beyond the edge");
+        }
+    }
+
+    @Test
+    @DisplayName("Island weight is robust against NaN / infinite / negative / inverted parameters")
+    void testWeightEdgeCases() {
+        for (SpawnIslandBias bias : new SpawnIslandBias[]{
+                new SpawnIslandBias(Double.NaN, Double.NaN),
+                new SpawnIslandBias(Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY),
+                new SpawnIslandBias(-500.0, -1.0),
+                new SpawnIslandBias(50.0, 500.0),   // core larger than radius
+                new SpawnIslandBias(0.0, 0.0)}) {
+            for (int x : new int[]{0, 10, 60, 200, 5000}) {
+                double v = bias.compute(new DummyContext(x, 64, 0));
+                assertTrue(Double.isFinite(v), bias + " must be finite at x=" + x);
+                assertTrue(v >= bias.minValue() && v <= bias.maxValue(), bias + " out of range at x=" + x);
             }
         }
+        assertEquals(0.0, new SpawnIslandBias(130.0, 40.0).compute(null), "null context must return 0.0 safely");
+    }
 
-        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-
-        assertNotNull(bestCandidate, "Starter spawn position candidate must be selected");
-        assertTrue(iterations <= 64, "Search must never exceed 64 iterations");
-        assertTrue(elapsedMs < 500, "Spawn selection simulation must complete in under 500ms, took: " + elapsedMs + "ms");
+    @Test
+    @DisplayName("Spawn search iteration cap must cover the whole configured search radius")
+    void testSpawnSearchCapCoversConfiguredRadius() {
+        assertEquals(SpawnIslandHandler.MAX_SEARCH_RADIUS,
+                SpawnIslandHandler.MAX_SEARCH_LAYERS * SpawnIslandHandler.SEARCH_STEP,
+                "MAX_SEARCH_RADIUS must be a whole number of rings");
+        assertTrue(SpawnIslandHandler.MAX_SEARCH_ITERATIONS
+                        >= SpawnSearchPattern.candidateCount(SpawnIslandHandler.MAX_SEARCH_LAYERS),
+                "iteration cap must not cut the search short of MAX_SEARCH_RADIUS (it used to stop at ~64 blocks)");
     }
 }

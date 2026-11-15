@@ -1,4 +1,5 @@
 {
-  "type": "sereneworldgen:spawn_island_bias"
+  "type": "sereneworldgen:spawn_island_bias",
+  "radius": 130.0,
+  "core_radius": 40.0
 }
-

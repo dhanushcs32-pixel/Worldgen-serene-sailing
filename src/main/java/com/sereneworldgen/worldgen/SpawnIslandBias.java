@@ -6,17 +6,28 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.util.KeyDispatchDataCodec;
 import net.minecraft.world.level.levelgen.DensityFunction;
 
-public record SpawnIslandBias(double radius, double boost) implements DensityFunction.SimpleFunction {
+/**
+ * Radial blend weight for the guaranteed starter island around (0, 0).
+ * <p>
+ * Returns 1.0 inside {@code coreRadius}, fades smoothly (cosine) to 0.0 at {@code radius}, and is 0.0
+ * beyond. The data pack uses it to <em>blend</em> the natural terrain toward a fixed island height
+ * (see {@code depth.json}, {@code island_offset.json}), rather than adding a boost on top of whatever the
+ * natural terrain happens to be. An additive boost made the spawn height depend on the seed (from y~150 up
+ * to near the build limit) and produced ~900 block wide landmasses; a blend gives a predictable, small island.
+ * <p>
+ * The registered type id stays {@code sereneworldgen:spawn_island_bias} for compatibility.
+ */
+public record SpawnIslandBias(double radius, double coreRadius) implements DensityFunction.SimpleFunction {
 
-    public static final double DEFAULT_RADIUS = 1400.0;
-    public static final double DEFAULT_BOOST = 0.90;
-    public static final double CORE_RADIUS = 70.0;
-    public static final double COAST_RADIUS = 120.0;
+    /** Outer edge of the blend. With the default terrain this gives a shoreline ~60 blocks from spawn. */
+    public static final double DEFAULT_RADIUS = 130.0;
+    /** Inside this distance the island is fully "on". */
+    public static final double DEFAULT_CORE_RADIUS = 40.0;
 
     public static final MapCodec<SpawnIslandBias> CODEC = RecordCodecBuilder.mapCodec(instance ->
             instance.group(
                     Codec.DOUBLE.optionalFieldOf("radius", DEFAULT_RADIUS).forGetter(SpawnIslandBias::radius),
-                    Codec.DOUBLE.optionalFieldOf("boost", DEFAULT_BOOST).forGetter(SpawnIslandBias::boost)
+                    Codec.DOUBLE.optionalFieldOf("core_radius", DEFAULT_CORE_RADIUS).forGetter(SpawnIslandBias::coreRadius)
             ).apply(instance, SpawnIslandBias::new)
     );
 
@@ -29,61 +40,32 @@ public record SpawnIslandBias(double radius, double boost) implements DensityFun
         }
 
         double safeRadius = (Double.isFinite(radius) && radius > 0.0) ? radius : DEFAULT_RADIUS;
-        double safeBoost = Double.isFinite(boost) ? boost : DEFAULT_BOOST;
+        double safeCore = Double.isFinite(coreRadius) ? Math.clamp(coreRadius, 0.0, safeRadius * 0.99) : Math.min(DEFAULT_CORE_RADIUS, safeRadius * 0.99);
 
         double x = ctx.blockX();
         double z = ctx.blockZ();
-        double distSq = x * x + z * z;
-        double rSq = safeRadius * safeRadius;
+        double dist = Math.sqrt(x * x + z * z);
 
-        if (distSq >= rSq || distSq < 0.0 || Double.isNaN(distSq)) {
+        if (!Double.isFinite(dist) || dist >= safeRadius) {
             return 0.0;
         }
 
-        double dist = Math.sqrt(distSq);
-        if (!Double.isFinite(dist)) {
-            return 0.0;
+        if (dist <= safeCore) {
+            return 1.0;
         }
 
-        double coreBoost = Math.max(safeBoost + 0.45, 1.35);
-
-        double result;
-        // 1. Guaranteed elevated starter island core near (0, 0)
-        if (dist <= CORE_RADIUS) {
-            result = coreBoost;
-        } else if (dist <= COAST_RADIUS) {
-            // 2. Smooth coastal transition to beach and shoreline
-            double t = (dist - CORE_RADIUS) / (COAST_RADIUS - CORE_RADIUS);
-            double smoothT = 0.5 * (1.0 + Math.cos(t * Math.PI));
-            result = safeBoost + (coreBoost - safeBoost) * smoothT;
-        } else {
-            // 3. Archipelago spread outward to radius
-            if (safeRadius <= COAST_RADIUS) {
-                result = 0.0;
-            } else {
-                double tArch = (dist - COAST_RADIUS) / (safeRadius - COAST_RADIUS);
-                tArch = Math.clamp(tArch, 0.0, 1.0);
-                result = safeBoost * (1.0 - tArch);
-            }
-        }
-
-        if (!Double.isFinite(result)) {
-            return 0.0;
-        }
-
-        return Math.clamp(result, minValue(), maxValue());
+        double t = (dist - safeCore) / (safeRadius - safeCore);
+        return Math.clamp(0.5 * (1.0 + Math.cos(t * Math.PI)), 0.0, 1.0);
     }
 
     @Override
     public double minValue() {
-        double safeBoost = Double.isFinite(boost) ? boost : DEFAULT_BOOST;
-        return Math.min(0.0, safeBoost);
+        return 0.0;
     }
 
     @Override
     public double maxValue() {
-        double safeBoost = Double.isFinite(boost) ? boost : DEFAULT_BOOST;
-        return Math.max(0.0, Math.max(safeBoost, Math.max(safeBoost + 0.45, 1.35)));
+        return 1.0;
     }
 
     @Override
