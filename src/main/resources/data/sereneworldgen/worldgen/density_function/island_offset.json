@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:add",
+  "argument1": -0.40,
+  "argument2": {
+    "type": "minecraft:mul",
+    "argument1": -0.08,
+    "argument2": "minecraft:overworld/erosion"
+  }
+}
+
