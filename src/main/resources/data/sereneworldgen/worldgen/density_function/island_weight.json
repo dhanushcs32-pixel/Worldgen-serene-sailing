@@ -1,0 +1,40 @@
+{
+  "type": "minecraft:clamp",
+  "input": {
+    "type": "minecraft:add",
+    "argument1": "sereneworldgen:spawn_island_bias",
+    "argument2": {
+      "type": "minecraft:mul",
+      "argument1": {
+        "type": "minecraft:mul",
+        "argument1": 0.5,
+        "argument2": {
+          "type": "minecraft:noise",
+          "noise": "minecraft:surface",
+          "xz_scale": 1.0,
+          "y_scale": 0.0
+        }
+      },
+      "argument2": {
+        "type": "minecraft:mul",
+        "argument1": 4.0,
+        "argument2": {
+          "type": "minecraft:mul",
+          "argument1": "sereneworldgen:spawn_island_bias",
+          "argument2": {
+            "type": "minecraft:add",
+            "argument1": 1.0,
+            "argument2": {
+              "type": "minecraft:mul",
+              "argument1": -1.0,
+              "argument2": "sereneworldgen:spawn_island_bias"
+            }
+          }
+        }
+      }
+    }
+  },
+  "min": 0.0,
+  "max": 1.0
+}
+

@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:min",
+  "argument1": {
+    "type": "minecraft:max",
+    "argument1": "sereneworldgen:natural_offset",
+    "argument2": "sereneworldgen:island_offset"
+  },
+  "argument2": {
+    "type": "minecraft:add",
+    "argument1": "sereneworldgen:island_offset",
+    "argument2": 0.16
+  }
+}
+

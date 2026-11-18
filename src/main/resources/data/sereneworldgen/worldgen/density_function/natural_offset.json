@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:add",
+  "argument1": "minecraft:overworld/offset",
+  "argument2": "sereneworldgen:ocean_depth_offset"
+}
+
