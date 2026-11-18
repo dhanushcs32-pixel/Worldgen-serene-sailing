@@ -72,6 +72,9 @@ public class SpawnIslandHandler {
     /** Server-thread only (all handlers below run on the server thread). */
     private static final List<PendingFlock> PENDING_FLOCKS = new ArrayList<>();
 
+    /** One flock per 64x64 cell this session; independent of entity queries (see FlockGrid). */
+    private static final FlockGrid FLOCK_GRID = new FlockGrid();
+
     /**
      * True only for worlds generated with the Serene Sailing "endless_ocean" noise settings.
      * Without this guard the handlers below would also move spawn and add sheep in vanilla worlds.
@@ -250,6 +253,7 @@ public class SpawnIslandHandler {
             PendingFlock pending = iterator.next();
             try {
                 if (pending.level.hasChunk(pending.pos.getX() >> 4, pending.pos.getZ() >> 4)) {
+                    FLOCK_GRID.tryReserve(pending.pos.getX(), pending.pos.getZ()); // chunk flocks skip this cell
                     spawnSheepFlock(pending.level, pending.pos, 2, 3);
                     iterator.remove();
                 } else if (--pending.ticksLeft <= 0) {
@@ -266,6 +270,7 @@ public class SpawnIslandHandler {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         PENDING_FLOCKS.clear();
+        FLOCK_GRID.clear();
     }
 
     @SubscribeEvent
@@ -304,10 +309,11 @@ public class SpawnIslandHandler {
                 if (serverLevel.getServer() != null) {
                     serverLevel.getServer().execute(() -> {
                         try {
-                            if (serverLevel.hasChunk(chunkPos.x, chunkPos.z)) {
-                                AABB checkArea = new AABB(surfacePos).inflate(80.0);
+                            if (serverLevel.hasChunk(chunkPos.x, chunkPos.z) && FLOCK_GRID.tryReserve(cx, cz)) {
+                                // Secondary check for sheep from earlier sessions; the grid is the real limiter
+                                AABB checkArea = new AABB(surfacePos).inflate(48.0);
                                 List<Sheep> existing = serverLevel.getEntitiesOfClass(Sheep.class, checkArea);
-                                if (existing.size() < 4) {
+                                if (existing.size() < 3) {
                                     spawnSheepFlock(serverLevel, surfacePos, 2, 3);
                                 }
                             }

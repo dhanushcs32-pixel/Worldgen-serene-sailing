@@ -10,8 +10,9 @@ import net.minecraft.world.level.levelgen.DensityFunction;
  * Radial blend weight for the guaranteed starter island around (0, 0).
  * <p>
  * Returns 1.0 inside {@code coreRadius}, fades smoothly (cosine) to 0.0 at {@code radius}, and is 0.0
- * beyond. The data pack uses it to <em>blend</em> the natural terrain toward a fixed island height
- * (see {@code depth.json}, {@code island_offset.json}), rather than adding a boost on top of whatever the
+ * beyond. This is the raw, perfectly circular weight; {@code island_weight.json} warps it with noise so the
+ * coastline is organic, and the data pack uses that to <em>blend</em> the natural terrain toward a fixed island
+ * height (see {@code terrain_offset.json}, {@code island_offset.json}), rather than adding a boost on top of whatever the
  * natural terrain happens to be. An additive boost made the spawn height depend on the seed (from y~150 up
  * to near the build limit) and produced ~900 block wide landmasses; a blend gives a predictable, small island.
  * <p>

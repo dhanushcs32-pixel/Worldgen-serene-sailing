@@ -5,15 +5,14 @@
     "type": "minecraft:clamp",
     "input": {
       "type": "minecraft:add",
-      "argument1": -3.05,
+      "argument1": 3.45,
       "argument2": {
         "type": "minecraft:mul",
-        "argument1": 4.0,
-        "argument2": "sereneworldgen:spawn_island_bias"
+        "argument1": 6.4,
+        "argument2": "sereneworldgen:terrain_offset"
       }
     },
     "min": -1.2,
     "max": 0.6
   }
 }
-

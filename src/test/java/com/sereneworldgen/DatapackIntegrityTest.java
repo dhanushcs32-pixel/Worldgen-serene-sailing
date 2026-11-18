@@ -67,4 +67,3 @@ public class DatapackIntegrityTest {
                 "radius " + radius + " would recreate the oversized (~900 block) landmass");
     }
 }
-
