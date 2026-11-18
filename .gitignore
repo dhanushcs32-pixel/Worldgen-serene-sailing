@@ -25,6 +25,7 @@ crash-reports/
 .project
 .classpath
 .settings/
+.eclipse/
 
 # Local build environment overrides
 local.properties

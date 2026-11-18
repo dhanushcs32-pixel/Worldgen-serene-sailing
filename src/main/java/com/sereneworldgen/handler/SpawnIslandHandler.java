@@ -2,9 +2,12 @@ package com.sereneworldgen.handler;
 
 import com.mojang.logging.LogUtils;
 import com.sereneworldgen.datagen.DataGenerators;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
+import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.tags.BlockTags;
@@ -14,9 +17,9 @@ import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -50,13 +53,14 @@ public class SpawnIslandHandler {
     public static final int FOOTPRINT_RADIUS = 24;
     public static final double REQUIRED_LAND_RATIO = 0.65;
     /**
-     * Safety cap on candidates evaluated. Derived from the search geometry so it can never silently
-     * cut the search short of MAX_SEARCH_RADIUS (it used to be a hard-coded 64, which stopped at ~64 blocks).
+     * Total number of candidates in the radial search (rings 0 through MAX_SEARCH_LAYERS).
      */
     public static final int MAX_SEARCH_ITERATIONS = SpawnSearchPattern.candidateCount(MAX_SEARCH_LAYERS);
 
     /** How long (ticks) to keep retrying the starter flock while the spawn chunk finishes loading. */
     private static final int STARTER_FLOCK_MAX_WAIT_TICKS = 20 * 30;
+
+    public record ColumnSample(int surfaceY, boolean isSolidDry) {}
 
     private static final class PendingFlock {
         final ServerLevel level;
@@ -71,9 +75,6 @@ public class SpawnIslandHandler {
 
     /** Server-thread only (all handlers below run on the server thread). */
     private static final List<PendingFlock> PENDING_FLOCKS = new ArrayList<>();
-
-    /** One flock per 64x64 cell this session; independent of entity queries (see FlockGrid). */
-    private static final FlockGrid FLOCK_GRID = new FlockGrid();
 
     /**
      * True only for worlds generated with the Serene Sailing "endless_ocean" noise settings.
@@ -99,18 +100,12 @@ public class SpawnIslandHandler {
 
             BlockPos bestCandidate = null;
             double bestLandRatio = 0.0;
-            int iterations = 0;
+            Long2ObjectMap<ColumnSample> columnCache = new Long2ObjectOpenHashMap<>();
 
             // Spiral outward from (0, 0) in concentric square rings, nearest ring first
-            search:
             for (int layer = 0; layer <= MAX_SEARCH_LAYERS; layer++) {
                 for (int[] point : SpawnSearchPattern.ring(layer, SEARCH_STEP)) {
-                    if (++iterations > MAX_SEARCH_ITERATIONS) {
-                        LOGGER.warn("[SereneOceanWorldgen] Spawn search reached maximum safety iteration limit ({})", MAX_SEARCH_ITERATIONS);
-                        break search;
-                    }
-
-                    EvaluationResult result = evaluateCandidate(serverLevel, point[0], point[1]);
+                    EvaluationResult result = evaluateCandidate(serverLevel, point[0], point[1], columnCache);
                     if (result.isValidIsland()) {
                         setWorldSpawn(serverLevel, event, result.spawnPos(), result.landRatio());
                         return;
@@ -119,6 +114,15 @@ public class SpawnIslandHandler {
                         bestLandRatio = result.landRatio();
                         bestCandidate = result.spawnPos();
                     }
+                }
+
+                // If after searching the inner island core (rings 0..2, up to radius 32) we have already found
+                // an island with strong dry land (>= 65%), but the climate is non-habitable (e.g. desert, badlands, snowy),
+                // further outer rings will remain in the same macro-biome. Avoid scanning outer rings needlessly.
+                if (layer >= 2 && bestLandRatio >= REQUIRED_LAND_RATIO && bestCandidate != null) {
+                    LOGGER.info("[SereneOceanWorldgen] Strong dry island found at {} (dry land: {}%) in non-habitable climate; using early fallback.",
+                            bestCandidate, Math.round(bestLandRatio * 100));
+                    break;
                 }
             }
 
@@ -131,83 +135,93 @@ public class SpawnIslandHandler {
                 LOGGER.warn("[SereneOceanWorldgen] No suitable island candidate found within radius; allowing vanilla spawn placement.");
             }
         } catch (Exception e) {
-            LOGGER.error("[SereneOceanWorldgen] Failed to establish world spawn position: {}", e.getMessage());
+            LOGGER.error("[SereneOceanWorldgen] Failed to establish world spawn position", e);
         }
     }
 
     public static EvaluationResult evaluateCandidate(ServerLevel level, int candX, int candZ) {
+        return evaluateCandidate(level, candX, candZ, new Long2ObjectOpenHashMap<>());
+    }
+
+    public static EvaluationResult evaluateCandidate(ServerLevel level, int candX, int candZ, Long2ObjectMap<ColumnSample> cache) {
         try {
-            var chunkSource = level.getChunkSource();
-            var generator = chunkSource.getGenerator();
-            var randomState = chunkSource.randomState();
+            ServerChunkCache chunkSource = level.getChunkSource();
+            ChunkGenerator generator = chunkSource.getGenerator();
+            RandomState randomState = chunkSource.randomState();
 
             // Query surface elevation at candidate center
-            int surfaceY;
-            ChunkAccess centerChunk = chunkSource.getChunkNow(candX >> 4, candZ >> 4);
-            if (centerChunk != null) {
-                surfaceY = centerChunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, candX & 15, candZ & 15);
-            } else {
-                surfaceY = generator.getBaseHeight(candX, candZ, Heightmap.Types.OCEAN_FLOOR_WG, level, randomState);
-            }
+            ColumnSample centerSample = getOrComputeColumn(level, chunkSource, generator, randomState, cache, candX, candZ);
+            int surfaceY = centerSample.surfaceY();
 
             // Submerged candidates (below sea level Y=63) cannot serve as dry starter spawn
-            if (surfaceY < 63) {
-                return new EvaluationResult(new BlockPos(candX, surfaceY, candZ), 0.0, false);
+            if (surfaceY < 63 || !centerSample.isSolidDry()) {
+                return new EvaluationResult(new BlockPos(candX, Math.max(surfaceY, 64), candZ), 0.0, false);
             }
 
+            // surfaceY already represents the first free air block above ground (highest_solid_y + 1).
+            // Player feet spawn directly at centerSurfacePos.
             BlockPos centerSurfacePos = new BlockPos(candX, surfaceY, candZ);
 
             int totalColumns = 0;
             int solidDryColumns = 0;
 
-            // Sample footprint within FOOTPRINT_RADIUS using non-blocking queries
+            // Sample footprint within FOOTPRINT_RADIUS using cached non-blocking queries
             for (int dx = -FOOTPRINT_RADIUS; dx <= FOOTPRINT_RADIUS; dx += 8) {
                 for (int dz = -FOOTPRINT_RADIUS; dz <= FOOTPRINT_RADIUS; dz += 8) {
                     totalColumns++;
                     int sampleX = candX + dx;
                     int sampleZ = candZ + dz;
 
-                    ChunkAccess sampleChunk = chunkSource.getChunkNow(sampleX >> 4, sampleZ >> 4);
-                    if (sampleChunk != null) {
-                        int colY = sampleChunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sampleX & 15, sampleZ & 15) - 1;
-                        if (colY >= 63) {
-                            BlockState state = sampleChunk.getBlockState(new BlockPos(sampleX & 15, colY, sampleZ & 15));
-                            if (state.getFluidState().isEmpty() && !state.isAir()) {
-                                solidDryColumns++;
-                            }
-                        }
-                    } else {
-                        int colY = generator.getBaseHeight(sampleX, sampleZ, Heightmap.Types.OCEAN_FLOOR_WG, level, randomState) - 1;
-                        if (colY >= 63) {
-                            BlockState state = generator.getBaseColumn(sampleX, sampleZ, level, randomState).getBlock(colY);
-                            if (state.getFluidState().isEmpty() && !state.isAir()) {
-                                solidDryColumns++;
-                            }
-                        }
+                    ColumnSample col = getOrComputeColumn(level, chunkSource, generator, randomState, cache, sampleX, sampleZ);
+                    if (col.isSolidDry() && col.surfaceY() >= 63) {
+                        solidDryColumns++;
                     }
                 }
             }
 
             double landRatio = totalColumns > 0 ? (double) solidDryColumns / totalColumns : 0.0;
-            // Short-circuits: the (cheap) biome lookup only runs for footprints that are land-heavy enough
             boolean validIsland = (landRatio >= REQUIRED_LAND_RATIO)
                     && isHabitableBiome(generator, randomState, candX, surfaceY, candZ);
 
-            BlockPos spawnPos = centerSurfacePos.above();
-            return new EvaluationResult(spawnPos, landRatio, validIsland);
+            return new EvaluationResult(centerSurfacePos, landRatio, validIsland);
         } catch (Exception e) {
-            LOGGER.warn("[SereneOceanWorldgen] Error evaluating candidate at ({}, {}): {}", candX, candZ, e.getMessage());
+            LOGGER.warn("[SereneOceanWorldgen] Error evaluating candidate at ({}, {})", candX, candZ, e);
             return new EvaluationResult(new BlockPos(candX, 64, candZ), 0.0, false);
         }
     }
 
+    public static ColumnSample getOrComputeColumn(ServerLevel level, ServerChunkCache chunkSource, ChunkGenerator generator,
+                                                  RandomState randomState, Long2ObjectMap<ColumnSample> cache, int x, int z) {
+        long key = (((long) x) << 32) | (z & 0xFFFFFFFFL);
+        ColumnSample cached = cache.get(key);
+        if (cached != null) {
+            return cached;
+        }
+
+        int surfaceY;
+        boolean solidDry = false;
+        ChunkAccess chunk = chunkSource.getChunkNow(x >> 4, z >> 4);
+        if (chunk != null) {
+            surfaceY = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x & 15, z & 15);
+            if (surfaceY >= 63) {
+                BlockState state = chunk.getBlockState(new BlockPos(x & 15, surfaceY - 1, z & 15));
+                solidDry = state.getFluidState().isEmpty() && !state.isAir();
+            }
+        } else {
+            surfaceY = generator.getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, level, randomState);
+            if (surfaceY >= 63) {
+                BlockState state = generator.getBaseColumn(x, z, level, randomState).getBlock(surfaceY - 1);
+                solidDry = state.getFluidState().isEmpty() && !state.isAir();
+            }
+        }
+
+        ColumnSample sample = new ColumnSample(surfaceY, solidDry);
+        cache.put(key, sample);
+        return sample;
+    }
+
     /**
      * Whether the biome at the candidate can support a starter base (trees and/or grass with sheep).
-     * <p>
-     * This replaces a block-based "vegetation" check that could never fail: before chunks exist the
-     * only block data available is {@code getBaseColumn}, which contains just stone/water/air (no
-     * surface rules, so never grass or logs), and both branches of the old check set the flag to true.
-     * The biome source is available before generation, so use it instead.
      */
     static boolean isHabitableBiome(ChunkGenerator generator, RandomState randomState, int x, int y, int z) {
         Holder<Biome> biome = generator.getBiomeSource().getNoiseBiome(
@@ -238,7 +252,7 @@ public class SpawnIslandHandler {
             // spawn chunks are prepared). Queue the flock and retry each tick until the chunk is loaded.
             PENDING_FLOCKS.add(new PendingFlock(serverLevel, spawnPos));
         } catch (Exception e) {
-            LOGGER.error("[SereneOceanWorldgen] Error setting world spawn position: {}", e.getMessage());
+            LOGGER.error("[SereneOceanWorldgen] Error setting world spawn position", e);
         }
     }
 
@@ -253,7 +267,7 @@ public class SpawnIslandHandler {
             PendingFlock pending = iterator.next();
             try {
                 if (pending.level.hasChunk(pending.pos.getX() >> 4, pending.pos.getZ() >> 4)) {
-                    FLOCK_GRID.tryReserve(pending.pos.getX(), pending.pos.getZ()); // chunk flocks skip this cell
+                    FlockGridSavedData.get(pending.level).tryReserve(pending.pos.getX(), pending.pos.getZ());
                     spawnSheepFlock(pending.level, pending.pos, 2, 3);
                     iterator.remove();
                 } else if (--pending.ticksLeft <= 0) {
@@ -261,7 +275,7 @@ public class SpawnIslandHandler {
                     iterator.remove();
                 }
             } catch (Exception e) {
-                LOGGER.warn("[SereneOceanWorldgen] Starter sheep spawn failed at {}: {}", pending.pos, e.getMessage());
+                LOGGER.warn("[SereneOceanWorldgen] Starter sheep spawn failed at {}", pending.pos, e);
                 iterator.remove();
             }
         }
@@ -270,7 +284,6 @@ public class SpawnIslandHandler {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         PENDING_FLOCKS.clear();
-        FLOCK_GRID.clear();
     }
 
     @SubscribeEvent
@@ -309,7 +322,7 @@ public class SpawnIslandHandler {
                 if (serverLevel.getServer() != null) {
                     serverLevel.getServer().execute(() -> {
                         try {
-                            if (serverLevel.hasChunk(chunkPos.x, chunkPos.z) && FLOCK_GRID.tryReserve(cx, cz)) {
+                            if (serverLevel.hasChunk(chunkPos.x, chunkPos.z) && FlockGridSavedData.get(serverLevel).tryReserve(cx, cz)) {
                                 // Secondary check for sheep from earlier sessions; the grid is the real limiter
                                 AABB checkArea = new AABB(surfacePos).inflate(48.0);
                                 List<Sheep> existing = serverLevel.getEntitiesOfClass(Sheep.class, checkArea);
@@ -318,13 +331,13 @@ public class SpawnIslandHandler {
                                 }
                             }
                         } catch (Exception e) {
-                            LOGGER.warn("[SereneOceanWorldgen] Error verifying chunk sheep population at {}: {}", surfacePos, e.getMessage());
+                            LOGGER.warn("[SereneOceanWorldgen] Error verifying chunk sheep population at {}", surfacePos, e);
                         }
                     });
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("[SereneOceanWorldgen] Error during chunk load handler: {}", e.getMessage());
+            LOGGER.warn("[SereneOceanWorldgen] Error during chunk load handler", e);
         }
     }
 
@@ -368,7 +381,7 @@ public class SpawnIslandHandler {
                 LOGGER.info("[SereneOceanWorldgen] Placed flock of {} sheep at {}", spawned, centerPos);
             }
         } catch (Exception e) {
-            LOGGER.warn("[SereneOceanWorldgen] Failed to spawn sheep flock near {}: {}", centerPos, e.getMessage());
+            LOGGER.warn("[SereneOceanWorldgen] Failed to spawn sheep flock near {}", centerPos, e);
         }
     }
 

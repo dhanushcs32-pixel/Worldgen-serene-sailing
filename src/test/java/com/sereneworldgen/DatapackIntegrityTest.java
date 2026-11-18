@@ -66,4 +66,19 @@ public class DatapackIntegrityTest {
         assertTrue(radius > 0 && radius <= 200.0,
                 "radius " + radius + " would recreate the oversized (~900 block) landmass");
     }
+
+    @Test
+    @DisplayName("Endless ocean preset includes essential cave, peak, wetland, and river biomes")
+    void endlessOceanIncludesRequiredBiomes() throws IOException, URISyntaxException {
+        Path presetFile = densityDir().getParent().resolve("world_preset/endless_ocean.json");
+        assertTrue(Files.exists(presetFile), "endless_ocean.json preset must exist");
+        String content = Files.readString(presetFile);
+        for (String expectedBiome : List.of(
+                "minecraft:lush_caves", "minecraft:dripstone_caves", "minecraft:deep_dark",
+                "minecraft:swamp", "minecraft:mangrove_swamp",
+                "minecraft:jagged_peaks", "minecraft:stony_peaks", "minecraft:meadow", "minecraft:grove",
+                "minecraft:river")) {
+            assertTrue(content.contains("\"" + expectedBiome + "\""), "preset must include biome " + expectedBiome);
+        }
+    }
 }

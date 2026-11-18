@@ -24,6 +24,19 @@ public final class FlockGrid {
         return occupiedCells.add(key);
     }
 
+    public void addRawKey(long key) {
+        occupiedCells.add(key);
+    }
+
+    public long[] toLongArray() {
+        long[] array = new long[occupiedCells.size()];
+        int i = 0;
+        for (long key : occupiedCells) {
+            array[i++] = key;
+        }
+        return array;
+    }
+
     public void clear() {
         occupiedCells.clear();
     }
@@ -32,4 +45,3 @@ public final class FlockGrid {
         return occupiedCells.size();
     }
 }
-
