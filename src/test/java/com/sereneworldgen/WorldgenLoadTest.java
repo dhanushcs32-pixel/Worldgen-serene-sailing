@@ -89,13 +89,12 @@ public class WorldgenLoadTest {
     }
 
     @Test
-    @DisplayName("Spawn search iteration cap must cover the whole configured search radius")
-    void testSpawnSearchCapCoversConfiguredRadius() {
+    @DisplayName("Spawn search layers cover the whole configured search radius")
+    void testSpawnSearchCoversConfiguredRadius() {
         assertEquals(SpawnIslandHandler.MAX_SEARCH_RADIUS,
                 SpawnIslandHandler.MAX_SEARCH_LAYERS * SpawnIslandHandler.SEARCH_STEP,
                 "MAX_SEARCH_RADIUS must be a whole number of rings");
-        assertTrue(SpawnIslandHandler.MAX_SEARCH_ITERATIONS
-                        >= SpawnSearchPattern.candidateCount(SpawnIslandHandler.MAX_SEARCH_LAYERS),
-                "iteration cap must not cut the search short of MAX_SEARCH_RADIUS (it used to stop at ~64 blocks)");
+        assertEquals(289, SpawnSearchPattern.candidateCount(SpawnIslandHandler.MAX_SEARCH_LAYERS),
+                "rings 0..8 must contain 289 candidates");
     }
 }

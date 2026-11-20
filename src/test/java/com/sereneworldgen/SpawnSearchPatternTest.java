@@ -2,13 +2,14 @@ package com.sereneworldgen;
 
 import com.sereneworldgen.handler.SpawnIslandHandler;
 import com.sereneworldgen.handler.SpawnSearchPattern;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import net.minecraft.core.BlockPos;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -66,10 +67,10 @@ public class SpawnSearchPatternTest {
     }
 
     @Test
-    @DisplayName("Column caching reuses overlapping columns across neighboring candidate footprints")
+    @DisplayName("Column caching reuses overlapping columns across neighboring candidate footprints via production helper")
     void columnCachingEliminatesRedundantEvaluations() {
         AtomicInteger rawEvaluations = new AtomicInteger(0);
-        Map<Long, SpawnIslandHandler.ColumnSample> cache = new HashMap<>();
+        Long2ObjectMap<SpawnIslandHandler.ColumnSample> cache = new Long2ObjectOpenHashMap<>();
 
         // Simulate sampling 2 neighbouring candidates spaced 16 blocks apart with radius 24
         int[][] candidates = new int[][]{{0, 0}, {16, 0}};
@@ -78,8 +79,7 @@ public class SpawnSearchPatternTest {
                 for (int dz = -SpawnIslandHandler.FOOTPRINT_RADIUS; dz <= SpawnIslandHandler.FOOTPRINT_RADIUS; dz += 8) {
                     int sx = cand[0] + dx;
                     int sz = cand[1] + dz;
-                    long key = (((long) sx) << 32) | (sz & 0xFFFFFFFFL);
-                    cache.computeIfAbsent(key, k -> {
+                    SpawnIslandHandler.computeColumnIfAbsent(cache, sx, sz, (x, z) -> {
                         rawEvaluations.incrementAndGet();
                         return new SpawnIslandHandler.ColumnSample(65, true);
                     });
@@ -95,11 +95,11 @@ public class SpawnSearchPatternTest {
     }
 
     @Test
-    @DisplayName("Search terminates early on inner ring when land ratio is high even in non-habitable biome")
+    @DisplayName("Search terminates early on inner ring when land ratio is high even in non-habitable biome via production helper")
     void earlyExitOnInnerRingForStrongIsland() {
         int candidatesEvaluated = 0;
         double bestLandRatio = 0.0;
-        int[] bestPos = null;
+        BlockPos bestPos = null;
 
         search:
         for (int layer = 0; layer <= SpawnIslandHandler.MAX_SEARCH_LAYERS; layer++) {
@@ -109,19 +109,19 @@ public class SpawnSearchPatternTest {
                 double landRatio = (Math.hypot(point[0], point[1]) <= 40) ? 0.90 : 0.10;
                 if (landRatio > bestLandRatio) {
                     bestLandRatio = landRatio;
-                    bestPos = point;
+                    bestPos = new BlockPos(point[0], 65, point[1]);
                 }
             }
 
-            // Early exit logic matching SpawnIslandHandler
-            if (layer >= 2 && bestLandRatio >= SpawnIslandHandler.REQUIRED_LAND_RATIO && bestPos != null) {
+            // Calls actual production decision method on SpawnIslandHandler
+            if (SpawnIslandHandler.shouldEarlyExit(layer, bestLandRatio, bestPos)) {
                 break search;
             }
         }
 
         // Layer 0 (1) + Layer 1 (8) + Layer 2 (16) = 25 candidates total
         assertEquals(25, candidatesEvaluated, "should evaluate exactly 25 candidates (rings 0..2) before early fallback exit");
-        assertTrue(candidatesEvaluated < SpawnIslandHandler.MAX_SEARCH_ITERATIONS,
+        assertTrue(candidatesEvaluated < SpawnSearchPattern.candidateCount(SpawnIslandHandler.MAX_SEARCH_LAYERS),
                 "early exit avoided evaluating all 289 candidates");
         assertNotNull(bestPos);
         assertEquals(0.90, bestLandRatio, 1e-9);

@@ -1,4 +1,6 @@
 {
+  "type": "minecraft:cache_2d",
+  "argument": {
   "type": "minecraft:add",
   "argument1": "sereneworldgen:natural_offset",
   "argument2": {
@@ -14,5 +16,5 @@
       }
     }
   }
+  }
 }
-

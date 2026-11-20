@@ -45,15 +45,17 @@ public record SpawnIslandBias(double radius, double coreRadius) implements Densi
 
         double x = ctx.blockX();
         double z = ctx.blockZ();
-        double dist = Math.sqrt(x * x + z * z);
-
-        if (!Double.isFinite(dist) || dist >= safeRadius) {
+        if (Math.abs(x) >= safeRadius || Math.abs(z) >= safeRadius) {
             return 0.0;
         }
-
-        if (dist <= safeCore) {
+        double distSq = x * x + z * z;
+        if (!Double.isFinite(distSq) || distSq >= safeRadius * safeRadius) {
+            return 0.0;
+        }
+        if (distSq <= safeCore * safeCore) {
             return 1.0;
         }
+        double dist = Math.sqrt(distSq);
 
         double t = (dist - safeCore) / (safeRadius - safeCore);
         return Math.clamp(0.5 * (1.0 + Math.cos(t * Math.PI)), 0.0, 1.0);

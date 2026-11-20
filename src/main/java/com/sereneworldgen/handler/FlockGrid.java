@@ -24,6 +24,13 @@ public final class FlockGrid {
         return occupiedCells.add(key);
     }
 
+    public boolean isReserved(int blockX, int blockZ) {
+        int cellX = blockX >> CELL_SHIFT;
+        int cellZ = blockZ >> CELL_SHIFT;
+        long key = ((long) cellX << 32) | (cellZ & 0xFFFFFFFFL);
+        return occupiedCells.contains(key);
+    }
+
     public void addRawKey(long key) {
         occupiedCells.add(key);
     }

@@ -48,8 +48,11 @@ public class FlockGridSavedData extends SavedData {
         return reserved;
     }
 
+    public boolean isReserved(int blockX, int blockZ) {
+        return grid.isReserved(blockX, blockZ);
+    }
+
     public FlockGrid getGrid() {
         return grid;
     }
 }
-
