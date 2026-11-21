@@ -4,7 +4,8 @@
   "package": "com.sereneworldgen.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "PrimaryLevelDataMixin"
+    "PrimaryLevelDataMixin",
+    "StructureMixin"
   ],
   "client": [
     "WorldOpenFlowsMixin"

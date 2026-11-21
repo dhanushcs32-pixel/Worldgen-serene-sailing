@@ -1,18 +1,28 @@
 {
-  "type": "minecraft:max",
-  "argument1": "sereneworldgen:continents",
-  "argument2": {
-    "type": "minecraft:clamp",
-    "input": {
-      "type": "minecraft:add",
-      "argument1": 3.45,
-      "argument2": {
-        "type": "minecraft:mul",
-        "argument1": 6.4,
-        "argument2": "sereneworldgen:terrain_offset"
-      }
+  "type": "minecraft:cache_2d",
+  "argument": {
+    "type": "minecraft:range_choice",
+    "input": "sereneworldgen:terrain_offset",
+    "min_inclusive": -0.492,
+    "max_exclusive": 100.0,
+    "when_in_range": {
+      "type": "minecraft:clamp",
+      "input": {
+        "type": "minecraft:add",
+        "argument1": 3.30,
+        "argument2": {
+          "type": "minecraft:mul",
+          "argument1": 6.4,
+          "argument2": "sereneworldgen:terrain_offset"
+        }
+      },
+      "min": 0.15,
+      "max": 0.6
     },
-    "min": -1.2,
-    "max": 0.6
+    "when_out_of_range": {
+      "type": "minecraft:min",
+      "argument1": "sereneworldgen:continents",
+      "argument2": 0.14
+    }
   }
 }
